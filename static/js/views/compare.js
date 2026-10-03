@@ -75,7 +75,7 @@ window.Views.compare = (function () {
     const img = (await C.fetchImages()).find((i) => i.id === imgId);
     if (!img) return;
     const top = el.querySelector("#cp-top"), bottom = el.querySelector("#cp-bottom");
-    top.src = img.file_url;
+    top.src = img.preview_url;
     bottom.src = "/api/results/" + resultId + "/file";
     el.querySelector("#cp-caption").textContent = "左：原图 ｜ 右：处理结果";
     applyClip(el);

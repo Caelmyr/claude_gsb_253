@@ -5,9 +5,10 @@
 """
 import io
 import json
+import os
 
 from flask import Blueprint, jsonify, request, send_file
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageOps
 
 from . import config, pipeline as pipeline_engine
 from .algorithms import detection, features, segmentation, style, util
@@ -43,8 +44,9 @@ def _image_view(rec):
         "size_bytes": rec["size_bytes"], "created_at": rec["created_at"],
         "tags": rec.get("tags", []), "note": rec.get("note", ""),
         "annotations": rec.get("annotations", []),
-        "thumbnail_url": f"/api/images/{rec['id']}/thumbnail",
+        "thumbnail_url": f"/api/images/{rec['id']}/thumbnail?v={rec.get('thumbnail_version', 0)}",
         "file_url": f"/api/images/{rec['id']}/file",
+        "preview_url": f"/api/images/{rec['id']}/preview",
     }
 
 
@@ -203,14 +205,31 @@ def image_file(image_id):
     return send_file(path, mimetype="image/png" if path.endswith(".png") else "image/jpeg")
 
 
+@bp.get("/images/<image_id>/preview")
+def image_preview(image_id):
+    """供界面显示的已展平预览；下载用 /file 仍返回原始字节。"""
+    rec, img = _load_full_image(image_id)
+    if not rec:
+        return jsonify({"error": "not found"}), 404
+    rgb = util.ensure_rgb(ImageOps.exif_transpose(img))
+    rgb = util.downscale_to_max(rgb, config.PREVIEW_DIM)
+    buf = io.BytesIO()
+    rgb.save(buf, "PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
+
+
 @bp.get("/images/<image_id>/thumbnail")
 def image_thumbnail(image_id):
+    rec = image_store.get(image_id)
+    if not rec:
+        return jsonify({"error": "not found"}), 404
+
     path = image_store.thumbnail_path(image_id)
-    if not path or not __import__("os").path.exists(path):
-        # 回退到全图（缩略图缺失时）
-        path = image_store.file_path(image_id)
-        if not path:
-            return jsonify({"error": "not found"}), 404
+    if image_store.needs_thumbnail_refresh(image_id) or not os.path.exists(path):
+        if not image_store.refresh_thumbnail(image_id):
+            return jsonify({"error": "缩略图生成失败"}), 500
+        path = image_store.thumbnail_path(image_id)
     return send_file(path, mimetype="image/jpeg")
 
 

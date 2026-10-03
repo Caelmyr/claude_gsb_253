@@ -43,15 +43,14 @@ def to_grayscale(img: Image.Image) -> Image.Image:
 
 
 def ensure_rgb(img: Image.Image) -> Image.Image:
-    """统一成 RGB（PNG 透明底合成到白底）。"""
+    """统一成 RGB；所有透明像素先合成到配置的同一底色（白底）。"""
     if img.mode == "RGB":
         return img
-    if img.mode in ("RGBA", "LA", "PA"):
-        bg = Image.new("RGB", img.size, (255, 255, 255))
-        rgba = img.convert("RGBA")
-        bg.paste(rgba, mask=rgba.split()[-1])
-        return bg
-    return img.convert("RGB")
+
+    # P/PA 可能使用调色板透明色；先 convert("RGBA") 会把它展开成真正的 alpha 通道。
+    rgba = img.convert("RGBA")
+    bg = Image.new("RGBA", img.size, config.TRANSPARENT_BACKGROUND + (255,))
+    return Image.alpha_composite(bg, rgba).convert("RGB")
 
 
 # ---------------------------------------------------------------------------

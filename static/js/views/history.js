@@ -66,7 +66,7 @@ window.Views.history = (function () {
         <div><span class="dim">版本快照</span> ${nodes.map((n) => `<span class="badge">${C.esc(n.type)}</span>`).join(" ") || "无节点"}</div>
         ${nodeResults.length ? `<div><span class="dim">节点执行</span> ${nodeResults.map((n) => `${n.ok ? "✓" : "✗"}${n.node_id}`).join(" ")}</div>` : ""}
       </div>
-      ${e.result_id ? `<img src="/api/results/${e.result_id}/file" style="width:100%;border-radius:8px;margin-top:10px">` : ""}
+      ${e.result_id ? `<img class="source-preview" src="/api/results/${e.result_id}/file" style="width:100%;border-radius:8px;margin-top:10px">` : ""}
       <div class="toolbar" style="margin-top:12px">
         <button class="btn" id="hi-restore">恢复为流水线</button>
         <button class="btn btn-danger" id="hi-del">删除记录</button>

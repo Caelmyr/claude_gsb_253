@@ -117,12 +117,14 @@ window.Views.detection = (function () {
       annotations = rec.annotations || [];
       redrawCanvas();
     };
-    annImg.src = rec.file_url;
+    annImg.src = rec.preview_url;
   }
 
   function redrawCanvas() {
     if (!annImg) return;
     annCtx.clearRect(0, 0, annCanvas.width, annCanvas.height);
+    annCtx.fillStyle = "#fff";
+    annCtx.fillRect(0, 0, annCanvas.width, annCanvas.height);
     annCtx.drawImage(annImg, 0, 0);
     annotations.forEach((a) => {
       const [x, y, w, h] = a.box;

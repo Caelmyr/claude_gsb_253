@@ -9,12 +9,14 @@
 import hashlib
 import io
 import os
-import uuid
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import config
+from .algorithms import util
 from .storage import JsonStore, atomic_write_bytes, now_iso
+
+THUMBNAIL_VERSION = 1
 
 
 def _content_hash(data: bytes) -> str:
@@ -50,6 +52,13 @@ class ImageStore:
 
     def thumbnail_path(self, image_id):
         return os.path.join(config.THUMBS_DIR, f"{image_id}.jpg")
+
+    def thumbnail_version(self, image_id):
+        rec = self.get(image_id) or {}
+        return rec.get("thumbnail_version", 0)
+
+    def needs_thumbnail_refresh(self, image_id):
+        return self.thumbnail_version(image_id) != THUMBNAIL_VERSION
 
     # ------------------------------------------------------------------ 写
     def save_upload(self, data: bytes, filename: str):
@@ -102,23 +111,53 @@ class ImageStore:
             return doc
 
         self.meta.update(_add)
-        self._make_thumbnail(image_id, data)
+        if self._make_thumbnail(image_id, data):
+            self._set_thumbnail_version(image_id, THUMBNAIL_VERSION)
+            record["thumbnail_version"] = THUMBNAIL_VERSION
         return record
 
-    def _make_thumbnail(self, image_id, data: bytes):
-        """生成缩略图；失败不致命（保留空缩略图路径）。"""
+    def _make_thumbnail(self, image_id, data: bytes = None):
+        """生成缩略图；透明通道按统一白底合成。失败时返回 False。"""
         try:
+            if data is None:
+                with open(self.file_path(image_id), "rb") as f:
+                    data = f.read()
             img = Image.open(io.BytesIO(data))
-            img = ImageOps.exif_transpose(img).convert("RGB")
+            img = ImageOps.exif_transpose(img)
+            img = util.ensure_rgb(img)
             img.thumbnail((config.THUMB_DIM, config.THUMB_DIM), Image.Resampling.LANCZOS)
-            tmp = self.thumbnail_path(image_id) + ".tmp"
+            thumb_path = self.thumbnail_path(image_id)
+            tmp = thumb_path + ".tmp"
             img.save(tmp, "JPEG", quality=82)
-            os.replace(tmp, self.thumbnail_path(image_id))
+            os.replace(tmp, thumb_path)
+            return True
         except Exception:
             try:
                 os.unlink(self.thumbnail_path(image_id) + ".tmp")
             except OSError:
                 pass
+            return False
+
+    def refresh_thumbnail(self, image_id):
+        """按当前规则重建单张缩略图，并更新版本号。"""
+        if not self.get(image_id):
+            return False
+        if not self._make_thumbnail(image_id):
+            return False
+        self._set_thumbnail_version(image_id, THUMBNAIL_VERSION)
+        return True
+
+    def _set_thumbnail_version(self, image_id, version):
+        def _upd(doc):
+            doc = dict(doc)
+            rec = doc.get(image_id)
+            if rec:
+                rec = dict(rec)
+                rec["thumbnail_version"] = version
+                doc[image_id] = rec
+            return doc
+
+        self.meta.update(_upd)
 
     def update_meta(self, image_id, fields):
         """更新 tags / note / filename 等轻量字段。"""

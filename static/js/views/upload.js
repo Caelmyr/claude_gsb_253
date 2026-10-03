@@ -31,7 +31,7 @@ window.Views.upload = (function () {
     box.innerHTML = `
       <div class="panel">
         <div class="panel-title">图像详情</div>
-        <img src="${rec.file_url}" style="width:100%;border-radius:8px;margin-bottom:10px">
+        <img class="source-preview" src="${rec.preview_url}" style="width:100%;border-radius:8px;margin-bottom:10px">
         <div class="keypoint-stats" style="line-height:1.9">
           <div><span class="dim">文件名</span> <strong>${C.esc(rec.filename)}</strong></div>
           <div><span class="dim">尺寸</span> ${rec.width} × ${rec.height}</div>

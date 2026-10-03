@@ -34,6 +34,7 @@ MAX_DIM = 1600                    # 算法工作副本的最长边（超出则�
 PREVIEW_DIM = 900                 # 前端展示/下载的完整预览尺寸
 THUMB_DIM = 220                   # 缩略图最长边
 FEATURE_WORK_DIM = 360            # 特征提取/检测/分割的工作分辨率（加速）
+TRANSPARENT_BACKGROUND = (255, 255, 255)  # 透明通道的统一呈现底色：白
 
 MAX_BATCH_WORKERS = 2             # 批处理线程池大小（CPU 密集，控制内存）
 CACHE_MAX_BYTES = 256 * 1024 * 1024
