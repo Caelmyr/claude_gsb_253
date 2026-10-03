@@ -645,6 +645,9 @@ def restore_history(history_id):
 def init_app(app):
     """在应用启动时注册蓝图并做一次性一致性检查。"""
     app.register_blueprint(bp)
+    rebuilt = image_store.ensure_thumbnails_current()
+    if rebuilt:
+        app.logger.info("缩略图口径升级，已重建 %d 张", rebuilt)
     issues = image_store.reconcile()
     if issues["orphan_files"] or issues["orphan_meta"]:
         app.logger.info("启动一致性检查发现孤儿：%s", issues)

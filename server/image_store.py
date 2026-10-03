@@ -14,7 +14,12 @@ import uuid
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import config
+from .algorithms import util
 from .storage import JsonStore, atomic_write_bytes, now_iso
+
+# 缩略图生成口径版本。v2 起透明区域与处理链同一口径（合成到统一底色），
+# 旧版直接 convert("RGB") 丢弃透明通道导致透明区域变黑；版本不一致时全量重建。
+THUMBNAIL_VERSION = 2
 
 
 def _content_hash(data: bytes) -> str:
@@ -105,11 +110,23 @@ class ImageStore:
         self._make_thumbnail(image_id, data)
         return record
 
-    def _make_thumbnail(self, image_id, data: bytes):
-        """生成缩略图；失败不致命（保留空缩略图路径）。"""
+    def _make_thumbnail(self, image_id, data: bytes = None):
+        """生成缩略图；失败不致命（保留空缩略图路径）。
+
+        透明区域与处理链同一口径：按 util.FLATTEN_BACKGROUND 底色合成，
+        避免列表缩略图和处理结果底色不一致。
+        data 为 None 时从已落盘的原图文件读取（用于存量缩略图重建）。
+        """
         try:
-            img = Image.open(io.BytesIO(data))
-            img = ImageOps.exif_transpose(img).convert("RGB")
+            if data is not None:
+                img = Image.open(io.BytesIO(data))
+            else:
+                path = self.file_path(image_id)
+                if not path:
+                    return
+                img = Image.open(path)
+            img.load()  # 立即解码，避免惰性读取遗留文件句柄
+            img = util.ensure_rgb(ImageOps.exif_transpose(img))
             img.thumbnail((config.THUMB_DIM, config.THUMB_DIM), Image.Resampling.LANCZOS)
             tmp = self.thumbnail_path(image_id) + ".tmp"
             img.save(tmp, "JPEG", quality=82)
@@ -119,6 +136,33 @@ class ImageStore:
                 os.unlink(self.thumbnail_path(image_id) + ".tmp")
             except OSError:
                 pass
+
+    def ensure_thumbnails_current(self):
+        """缩略图生成口径升级时，一次性重建全部存量缩略图。
+
+        用 thumbnails/.version 记录当前生成口径的版本号；与 THUMBNAIL_VERSION
+        不一致（例如旧版把透明区域丢成黑底）则全量重建并更新版本号。
+        返回重建数量（无需重建时返回 0）。
+        """
+        marker = os.path.join(config.THUMBS_DIR, ".version")
+        try:
+            with open(marker, "r", encoding="utf-8") as f:
+                current = f.read().strip()
+        except OSError:
+            current = ""
+        if current == str(THUMBNAIL_VERSION):
+            return 0
+
+        rebuilt = 0
+        for image_id in list(self.meta.read()):
+            self._make_thumbnail(image_id)
+            rebuilt += 1
+        try:
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write(str(THUMBNAIL_VERSION))
+        except OSError:
+            pass
+        return rebuilt
 
     def update_meta(self, image_id, fields):
         """更新 tags / note / filename 等轻量字段。"""

@@ -42,12 +42,24 @@ def to_grayscale(img: Image.Image) -> Image.Image:
     return ImageOps.grayscale(img)
 
 
+# 全系统统一的透明区域底色：缩略图、处理链、结果缓存、差异对比
+# 都把透明区域合成到这一个底色上，保证同一张图在任何入口看到的颜色一致。
+FLATTEN_BACKGROUND = (255, 255, 255)
+
+
 def ensure_rgb(img: Image.Image) -> Image.Image:
-    """统一成 RGB（PNG 透明底合成到白底）。"""
+    """统一成 RGB：带透明信息的图按 FLATTEN_BACKGROUND 底色合成（全系统统一口径）。
+
+    覆盖 RGBA/LA/PA 以及调色板模式（P）里用 info["transparency"] 声明的
+    透明索引（PNG/GIF 常见）；其余模式直接转换。
+    """
     if img.mode == "RGB":
         return img
-    if img.mode in ("RGBA", "LA", "PA"):
-        bg = Image.new("RGB", img.size, (255, 255, 255))
+    has_alpha = img.mode in ("RGBA", "LA", "PA") or (
+        img.mode == "P" and "transparency" in img.info
+    )
+    if has_alpha:
+        bg = Image.new("RGB", img.size, FLATTEN_BACKGROUND)
         rgba = img.convert("RGBA")
         bg.paste(rgba, mask=rgba.split()[-1])
         return bg
